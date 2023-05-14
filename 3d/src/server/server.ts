@@ -52,12 +52,12 @@ class App {
             //console.log(pathUtil.resolve(fileName));
             fs.writeFileSync(fileName, "");
             req.on('readable', async () => {
-                console.log('readable');
+                //console.log('readable');
                 let data = req.read();
                 if (data) {
                     fs.appendFileSync(fileName, data);
                 } else {
-                    console.log('finish');
+                    //console.log('finish');
                     let question = await this.speechToText(fileName);
                     try {
                         let answear = JSON.parse(await this.getTheAnswear(question));
