@@ -5,12 +5,21 @@ import bodyParser from 'body-parser'
 import fs from "fs";
 import pathUtil from "path";
 import { Configuration, OpenAIApi } from "openai";
+import { Aws, Options as AwsClassOptions } from 'aws-cli-js';
+
+var awsOptions = new AwsClassOptions(
+    'AKIA4BCD53MJYEZF7T75',
+    '6YrQsOfTu9r8JXQsMrDrlfeYwmDwb6L7RZaNRlK1',
+    '',
+    pathUtil.resolve("./"),
+    'aws'
+  );
 
 const configuration = new Configuration({
     apiKey: "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",
 });
 
-const port: number = 3000
+const port: number = 80
 
 class App {
     private server: http.Server
@@ -40,7 +49,7 @@ class App {
         app.post("/question", (req, res) => {
 
             let fileName = 'audio/aud' + Date.now() + '.wav';
-            console.log(pathUtil.resolve(fileName));
+            //console.log(pathUtil.resolve(fileName));
             fs.writeFileSync(fileName, "");
             req.on('readable', async () => {
                 console.log('readable');
@@ -50,8 +59,19 @@ class App {
                 } else {
                     console.log('finish');
                     let question = await this.speechToText(fileName);
-                    let answear = await this.getTheAnswear(question);
-                    console.log("answear", answear);
+                    try {
+                        let answear = JSON.parse(await this.getTheAnswear(question));
+
+                        console.log("answear", answear);
+
+                        let voiceName = await this.generateVoice(answear.text);
+                        res.send(JSON.stringify({
+                            audioFile: voiceName,
+                            placeNumber: answear.pointNumber
+                        }));
+                    } catch(error) {
+                        console.error(error);
+                    }
                 }
             });
         });
@@ -65,6 +85,24 @@ class App {
         })
     }
 
+    private async generateVoice (text):Promise<string> {
+        const aws = new Aws(awsOptions);
+
+        let returnFileName = "audio/answer" + Date.now() + ".mp3";
+
+        let fileName = "dist/client/" + returnFileName;
+
+        let command = `polly synthesize-speech --output-format mp3 --voice-id Joanna --text "${text}" ${fileName}`;
+
+        //fs.writeFileSync("test.txt", command);
+
+        console.log("voice start")
+        let data = await aws.command(command);
+        //console.log('voice data = ', data);
+        console.log('voice done')
+        return returnFileName;
+    }
+
     private async getTheAnswear (question) {
         try {
             const openai = new OpenAIApi(configuration);
@@ -74,9 +112,25 @@ class App {
                     model: "gpt-3.5-turbo",
                     messages: [{
                         role: "user", 
-                        content: question,
+                        content: `${question}`,
+                    },{
+                        role: "system", 
+                        content: `Answers must always be in English no mater what.
+                        Also answear must be in JSON format describe below
+                        {"pointNumber": "number [position in places list]", "text": "yourAnswer"}
+                        You control a character in a game. Your character are in a room,
+                        where there are multiple places, you can walk to any of them while answearing
+                        So if user will ask you to go to specific place you can specify in json format place name
+                        You can use only places from the array below, you must specify position in array of places starting from 0.
+                        You can walk around specifying that places from list below.
+                        Be sure to check that there are such a place in list below, there are no other places in the room only this ones:
+                        ["Start Position", "Red Cube", "Green Cube", "Yellow Sphere", "Blue Sphere"]
+                        If there are no such places user asked about in the list below please specify as place position -1,
+                        and answear that you do not see such a place here.
+                        You start at the "Start Position" її номер 0, if you do not need to go anywhere specify -1 position number
+                        `,
                     }],
-                    temperature: 0.5,
+                    temperature: 0,
                     max_tokens: 256,
                     n: 1
                 }
@@ -106,12 +160,13 @@ class App {
                 "",
                 "json",
                 void 0,
-                void 0,
+                "",
                 {
                     maxBodyLength: 25000000
                 }
             );
-
+            
+            console.log("question text:", resp.data.text);
             return resp.data.text;
         } catch (error) {
             if (error.response) {

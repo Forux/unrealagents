@@ -9,10 +9,12 @@ const http_1 = __importDefault(require("http"));
 const fs_1 = __importDefault(require("fs"));
 const path_2 = __importDefault(require("path"));
 const openai_1 = require("openai");
+const aws_cli_js_1 = require("aws-cli-js");
+var awsOptions = new aws_cli_js_1.Options('AKIA4BCD53MJYEZF7T75', '6YrQsOfTu9r8JXQsMrDrlfeYwmDwb6L7RZaNRlK1', '', path_2.default.resolve("./"), 'aws');
 const configuration = new openai_1.Configuration({
     apiKey: "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",
 });
-const port = 3000;
+const port = 80;
 class App {
     constructor(port) {
         this.port = port;
@@ -36,7 +38,7 @@ class App {
         // visit http://127.0.0.1:3000
         app.post("/question", (req, res) => {
             let fileName = 'audio/aud' + Date.now() + '.wav';
-            console.log(path_2.default.resolve(fileName));
+            //console.log(pathUtil.resolve(fileName));
             fs_1.default.writeFileSync(fileName, "");
             req.on('readable', async () => {
                 console.log('readable');
@@ -47,8 +49,18 @@ class App {
                 else {
                     console.log('finish');
                     let question = await this.speechToText(fileName);
-                    let answear = await this.getTheAnswear(question);
-                    console.log("answear", answear);
+                    try {
+                        let answear = JSON.parse(await this.getTheAnswear(question));
+                        console.log("answear", answear);
+                        let voiceName = await this.generateVoice(answear.text);
+                        res.send(JSON.stringify({
+                            audioFile: voiceName,
+                            placeNumber: answear.pointNumber
+                        }));
+                    }
+                    catch (error) {
+                        console.error(error);
+                    }
                 }
             });
         });
@@ -59,6 +71,18 @@ class App {
             console.log(`Server listening on port ${this.port}.`);
         });
     }
+    async generateVoice(text) {
+        const aws = new aws_cli_js_1.Aws(awsOptions);
+        let returnFileName = "audio/answer" + Date.now() + ".mp3";
+        let fileName = "dist/client/" + returnFileName;
+        let command = `polly synthesize-speech --output-format mp3 --voice-id Joanna --text "${text}" ${fileName}`;
+        //fs.writeFileSync("test.txt", command);
+        console.log("voice start");
+        let data = await aws.command(command);
+        //console.log('voice data = ', data);
+        console.log('voice done');
+        return returnFileName;
+    }
     async getTheAnswear(question) {
         try {
             const openai = new openai_1.OpenAIApi(configuration);
@@ -66,9 +90,25 @@ class App {
                 model: "gpt-3.5-turbo",
                 messages: [{
                         role: "user",
-                        content: question,
+                        content: `${question}`,
+                    }, {
+                        role: "system",
+                        content: `Answers must always be in English no mater what.
+                        Also answear must be in JSON format describe below
+                        {"pointNumber": "number [position in places list]", "text": "yourAnswer"}
+                        You control a character in a game. Your character are in a room,
+                        where there are multiple places, you can walk to any of them while answearing
+                        So if user will ask you to go to specific place you can specify in json format place name
+                        You can use only places from the array below, you must specify position in array of places starting from 0.
+                        You can walk around specifying that places from list below.
+                        Be sure to check that there are such a place in list below, there are no other places in the room only this ones:
+                        ["Start Position", "Red Cube", "Green Cube", "Yellow Sphere", "Blue Sphere"]
+                        If there are no such places user asked about in the list below please specify as place position -1,
+                        and answear that you do not see such a place here.
+                        You start at the "Start Position" її номер 0, if you do not need to go anywhere specify -1 position number
+                        `,
                     }],
-                temperature: 0.5,
+                temperature: 0,
                 max_tokens: 256,
                 n: 1
             });
@@ -89,9 +129,10 @@ class App {
     async speechToText(speechFileName) {
         try {
             const openai = new openai_1.OpenAIApi(configuration);
-            const resp = await openai.createTranscription(fs_1.default.createReadStream(speechFileName), "whisper-1", "", "json", void 0, void 0, {
+            const resp = await openai.createTranscription(fs_1.default.createReadStream(speechFileName), "whisper-1", "", "json", void 0, "", {
                 maxBodyLength: 25000000
             });
+            console.log("question text:", resp.data.text);
             return resp.data.text;
         }
         catch (error) {

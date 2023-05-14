@@ -1,8 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader'
-import Stats from 'three/examples/jsm/libs/stats.module'
-import { GUI } from 'dat.gui'
 
 const scene = new THREE.Scene()
 scene.add(new THREE.AxesHelper(5))
@@ -19,10 +17,61 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 )
-camera.position.set(0.8, 1.4, 1.0)
+camera.position.set(0, 1.65, 1.5)
+
+let targetPoints = [[0,0,0]];
+
+let geometry = new THREE.BoxGeometry( 1, 1, 1 ); 
+let material = new THREE.MeshStandardMaterial( {
+    color: 0xc31313,
+    roughness: 1,
+    metalness: 0.8,
+
+} ); 
+let cube = new THREE.Mesh( geometry, material );
+cube.position.set(5,0.5,-5); // червоний куб
+targetPoints.push([5,0,-4]);
+scene.add( cube );
+
+geometry = new THREE.BoxGeometry( 1, 1, 1 ); 
+material = new THREE.MeshStandardMaterial( {
+    color: 0x24d917,
+    roughness: 1,
+    metalness: 0.8,
+
+} ); 
+cube = new THREE.Mesh( geometry, material );
+cube.position.set(0,0.5,-5); // зелений куб
+targetPoints.push([0,0,-4]);
+scene.add( cube );
+
+let geometry2 = new THREE.SphereGeometry( 0.5, 64, 64 ); 
+material = new THREE.MeshStandardMaterial( {
+    color: 0xffff18, 
+    roughness: 1,
+    metalness: 0.8,
+
+} ); 
+let sphere = new THREE.Mesh( geometry2, material );
+sphere.position.set(-4,0.5,4); //жовта сфера
+targetPoints.push([-4,0,3]);
+scene.add( sphere );
+
+geometry2 = new THREE.SphereGeometry( 0.5, 64, 64 ); 
+material = new THREE.MeshStandardMaterial( {
+    color: 0x1818d8, 
+    roughness: 1,
+    metalness: 0.8,
+
+} ); 
+sphere = new THREE.Mesh( geometry2, material );
+sphere.position.set(4,0.5,0); //синя сфера
+targetPoints.push([3,0,0]);
+scene.add( sphere );
 
 const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.setPixelRatio(window.devicePixelRatio)
 renderer.setClearColor( 0xEEEEEE, 1 );
 document.body.appendChild(renderer.domElement)
 
@@ -64,7 +113,6 @@ fbxLoader.load(
             (object as THREE.Object3D).animations[0]
         )
         animationActions.push(animationAction)
-        animationsFolder.add(animations, 'default')
         activeAction = animationActions[0]
 
         scene.add(object)
@@ -76,7 +124,6 @@ fbxLoader.load(
 
                 const animationAction = mixer.clipAction((object as THREE.Object3D).animations[0]);
                 animationActions.push(animationAction)
-                animationsFolder.add(animations, "walk")
 
                 // add an animation from another file
                 fbxLoader.load('models/chars/anim_talk.fbx',
@@ -84,7 +131,6 @@ fbxLoader.load(
                         console.log("loaded talk")
                         const animationAction = mixer.clipAction((object as THREE.Object3D).animations[0]);
                         animationActions.push(animationAction)
-                        animationsFolder.add(animations, "talk")
 
 
                         // add an animation from another file
@@ -93,9 +139,8 @@ fbxLoader.load(
                                 console.log("loaded idle")
                                 const animationAction = mixer.clipAction((object as THREE.Object3D).animations[0]);
                                 animationActions.push(animationAction)
-                                animationsFolder.add(animations, "idle")
                                 modelReady = true
-
+                                animations.idle();
                             },
                             (xhr) => {
                                 console.log((xhr.loaded / xhr.total * 100) + '% loaded')
@@ -138,9 +183,6 @@ function onWindowResize() {
     render()
 }
 
-const stats = new Stats()
-document.body.appendChild(stats.dom)
-
 const animations = {
     default: function () {
         setAction(animationActions[0])
@@ -156,6 +198,8 @@ const animations = {
     },
 }
 
+eval("window.runAnimation = animations");
+
 const setAction = (toAction: THREE.AnimationAction) => {
     if (toAction != activeAction) {
         lastAction = activeAction
@@ -168,11 +212,26 @@ const setAction = (toAction: THREE.AnimationAction) => {
     }
 }
 
-const gui = new GUI()
-const animationsFolder = gui.addFolder('Animations')
-animationsFolder.open()
-
 const clock = new THREE.Clock()
+
+let going = false;
+let currentPoint = 0;
+let targetPoint = 0;
+async function goToPoint(point:number) {
+    if (point == currentPoint) {
+        return true;
+    }
+    targetPoint = point;
+    animations.walk();
+    while (targetPoint != currentPoint) {
+        await new Promise(r => setTimeout(r, 200));
+    }
+    animations.idle();
+    character.lookAt(camera.position.x, 0, camera.position.z);
+    return true;
+}
+
+eval("window.goToPoint = goToPoint");
 
 function animate() {
     requestAnimationFrame(animate)
@@ -182,10 +241,32 @@ function animate() {
     if (modelReady) {
         mixer.update(clock.getDelta())
 
+        let xDone = false;
+        let yDone = false;
+
         let movement = new THREE.Vector3();
-        // if (character.position.z <= 100) {
-        //     movement.z = 0.01;
-        // }
+        if (targetPoint != currentPoint) {
+            if (Math.abs(targetPoints[targetPoint][0] - character.position.x) <= 0.01) {
+                xDone = true;
+                movement.x = targetPoints[targetPoint][0] - character.position.x;
+            } else if (targetPoints[targetPoint][0] > character.position.x) {
+                movement.x = 0.01;
+            } else if (targetPoints[targetPoint][0] < character.position.x) {
+                movement.x = -0.01;
+            }
+            if (Math.abs(targetPoints[targetPoint][2] - character.position.z) <= 0.01) {
+                yDone = true;
+                movement.z = targetPoints[targetPoint][2] - character.position.z;
+            } else if (targetPoints[targetPoint][2] > character.position.z) {
+                movement.z = 0.01;
+            } else if (targetPoints[targetPoint][2] < character.position.z) {
+                movement.z = -0.01;
+            }
+            if (xDone && yDone) {
+                currentPoint = targetPoint;
+            }
+            character.lookAt((new THREE.Vector3()).addVectors(character.position, movement));
+        }
 
         character.position.addVectors(character.position, movement);
         camera.position.addVectors(camera.position, movement);
@@ -194,8 +275,6 @@ function animate() {
     }
 
     render()
-
-    stats.update()
 }
 
 function render() {
