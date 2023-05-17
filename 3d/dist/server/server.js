@@ -12,7 +12,7 @@ const openai_1 = require("openai");
 const aws_cli_js_1 = require("aws-cli-js");
 var awsOptions = new aws_cli_js_1.Options('AKIA4BCD53MJYEZF7T75', '6YrQsOfTu9r8JXQsMrDrlfeYwmDwb6L7RZaNRlK1', '', path_2.default.resolve("./"), 'aws');
 const configuration = new openai_1.Configuration({
-    apiKey: "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",
+    apiKey: "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",
 });
 const port = 80;
 class App {
@@ -50,12 +50,13 @@ class App {
                     //console.log('finish');
                     let question = await this.speechToText(fileName);
                     try {
-                        let answear = JSON.parse(await this.getTheAnswear(question));
+                        let answear = await this.getTheAnswear(question);
                         console.log("answear", answear);
-                        let voiceName = await this.generateVoice(answear.text);
+                        let jsonanswear = JSON.parse(answear);
+                        let voiceName = await this.generateVoice(jsonanswear.text);
                         res.send(JSON.stringify({
                             audioFile: voiceName,
-                            placeNumber: answear.pointNumber
+                            placeNumber: jsonanswear.pointNumber
                         }));
                     }
                     catch (error) {
@@ -105,7 +106,7 @@ class App {
                         ["Start Position", "Red Cube", "Green Cube", "Yellow Sphere", "Blue Sphere"]
                         If there are no such places user asked about in the list below please specify as place position -1,
                         and answear that you do not see such a place here.
-                        You start at the "Start Position" її номер 0, if you do not need to go anywhere specify -1 position number
+                        You must asnwear with single valid json of specified above format.
                         `,
                     }],
                 temperature: 0,
